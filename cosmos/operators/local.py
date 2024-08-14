@@ -338,12 +338,12 @@ class DbtLocalBaseOperator(AbstractDbtBaseOperator):
             print("step 2")
             env = {k: str(v) for k, v in env.items()}
             print("step 3")
-            mp.set_start_method('spawn')
-            create_symlinks(self.project_dir, tmp_dir_path, self.install_deps)
+            if self.project_conn_id is None:
+                create_symlinks(self.project_dir, tmp_dir_path, self.install_deps)
             print("step 4")
 
-            if self.partial_parse and self.cache_dir is not None:
-                latest_partial_parse = cache._get_latest_partial_parse(Path(self.project_dir), self.cache_dir)
+            if self.partial_parse and self.cache_dir is not None and self.project_conn_id is None:
+                latest_partial_parse = cache._get_latest_partial_parse(self.project_dir, self.cache_dir)
                 logger.info("Partial parse is enabled and the latest partial parse file is %s", latest_partial_parse)
                 if latest_partial_parse is not None:
                     cache._copy_partial_parse_to_project(latest_partial_parse, tmp_dir_path)
@@ -380,7 +380,8 @@ class DbtLocalBaseOperator(AbstractDbtBaseOperator):
                 result = self.invoke_dbt(
                     command=full_cmd,
                     env=env,
-                    cwd=tmp_project_dir,
+                    # cwd=tmp_project_dir,
+                    cwd = self.project_dir
                 )
                 if is_openlineage_available:
                     self.calculate_openlineage_events_completes(env, tmp_dir_path)
