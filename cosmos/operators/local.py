@@ -335,7 +335,7 @@ class DbtLocalBaseOperator(AbstractDbtBaseOperator):
             )
             tmp_dir_path = Path(tmp_project_dir)
             env = {k: str(v) for k, v in env.items()}
-            create_symlinks(Path(self.project_dir), self.dbt_project_conn_id, tmp_dir_path, self.install_deps)
+            create_symlinks(Path(self.project_dir), "aws_default", tmp_dir_path, self.install_deps)
 
             if self.partial_parse and self.cache_dir is not None:
                 latest_partial_parse = cache._get_latest_partial_parse(Path(self.project_dir), self.cache_dir)
