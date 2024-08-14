@@ -43,16 +43,19 @@ def create_symlinks(project_path: Path, project_conn_id: str, tmp_dir: Path, ign
     if ignore_dbt_packages:
         # this is linked to dbt deps so if dbt deps is true then ignore existing dbt_packages folder
         ignore_paths.append("dbt_packages")
+    from airflow.providers.amazon.aws.hooks.s3 import S3Hook
     if project_conn_id:
         # Handle S3 path copying
-        from airflow.providers.amazon.aws.hooks.s3 import S3Hook
         s3_hook = S3Hook()
         bucket_name, key_prefix = project_path.parts[0], '/'.join(project_path.parts[1:])
 
         for obj in s3_hook.list_keys(bucket_name=bucket_name, prefix=key_prefix):
             relative_path = Path(obj).relative_to(key_prefix)
             local_path = tmp_dir / relative_path
+            logger.info(f"Downloading {obj} to {local_path}")
             local_path.parent.mkdir(parents=True, exist_ok=True)
+            logger.info("this shitty step works?")
+            logger.info(local_path.iterdir())
             # Download the file to the local path
             s3_hook.download_file(bucket_name=bucket_name, key=obj, local_path=str(local_path))
     else:
