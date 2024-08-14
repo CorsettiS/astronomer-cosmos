@@ -39,7 +39,7 @@ def has_non_empty_dependencies_file(project_path: Path) -> bool:
     return has_deps
 
 
-def create_symlinks(project_path: Path | ObjectStoragePath, tmp_dir: Path, ignore_dbt_packages: bool) -> None:
+def create_symlinks(project_path: Path , tmp_dir: Path, ignore_dbt_packages: bool) -> None:
     """Helper function to create symlinks to the dbt project files."""
     ignore_paths = [DBT_LOG_DIR_NAME, DBT_TARGET_DIR_NAME, PACKAGE_LOCKFILE_YML, "profiles.yml"]
     if ignore_dbt_packages:

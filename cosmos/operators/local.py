@@ -8,6 +8,7 @@ from abc import ABC, abstractmethod
 from functools import cached_property
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Literal, Sequence
+import multiprocessing as mp
 
 import jinja2
 from airflow import DAG
@@ -337,7 +338,7 @@ class DbtLocalBaseOperator(AbstractDbtBaseOperator):
             print("step 2")
             env = {k: str(v) for k, v in env.items()}
             print("step 3")
-
+            mp.set_start_method('spawn')
             create_symlinks(self.project_dir, tmp_dir_path, self.install_deps)
             print("step 4")
 
