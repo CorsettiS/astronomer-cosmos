@@ -37,13 +37,14 @@ def has_non_empty_dependencies_file(project_path: Path) -> bool:
     return has_deps
 
 
-def create_symlinks(project_path: Path,self.project_conn_id: str, tmp_dir: Path, ignore_dbt_packages: bool) -> None:
+def create_symlinks(project_path: Path, project_conn_id: str, tmp_dir: Path, ignore_dbt_packages: bool) -> None:
     """Helper function to create symlinks to the dbt project files."""
     ignore_paths = [DBT_LOG_DIR_NAME, DBT_TARGET_DIR_NAME, PACKAGE_LOCKFILE_YML, "profiles.yml"]
     if ignore_dbt_packages:
         # this is linked to dbt deps so if dbt deps is true then ignore existing dbt_packages folder
         ignore_paths.append("dbt_packages")
     if project_conn_id:
+        from airflow.providers.amazon.aws.hooks.s3 import S3Hook
         s3_hook = S3Hook(aws_conn_id=project_conn_id)
         bucket_name, key_prefix = project_path.parts[0], '/'.join(project_path.parts[1:])
         print(bucket_name, key_prefix)
