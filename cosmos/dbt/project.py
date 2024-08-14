@@ -47,15 +47,14 @@ def create_symlinks(project_path: Path , project_conn_id : str, tmp_dir: Path, i
         ignore_paths.append("dbt_packages")
     from airflow.providers.amazon.aws.hooks.s3 import S3Hook
     if project_conn_id:
-    # Handle S3 path copying
-    s3_hook = S3Hook(aws_conn_id=project_conn_id)
-    bucket_name, key_prefix = str(project_path).replace("aws_default@","").parts[0], '/'.join(project_path.parts[1:])
-    print(bucket_name, key_prefix)
-    for obj in s3_hook.list_keys(bucket_name=bucket_name, prefix=key_prefix):
-        relative_path = Path(obj).relative_to(key_prefix)
-        local_path = tmp_dir / relative_path
-        local_path.parent.mkdir(parents=True, exist_ok=True)
-        s3_hook.download_file(bucket_name=bucket_name, key=obj, local_path=str(local_path))
+        s3_hook = S3Hook(aws_conn_id=project_conn_id)
+        bucket_name, key_prefix = str(project_path).replace("aws_default@","").parts[0], '/'.join(project_path.parts[1:])
+        print(bucket_name, key_prefix)
+        for obj in s3_hook.list_keys(bucket_name=bucket_name, prefix=key_prefix):
+            relative_path = Path(obj).relative_to(key_prefix)
+            local_path = tmp_dir / relative_path
+            local_path.parent.mkdir(parents=True, exist_ok=True)
+            s3_hook.download_file(bucket_name=bucket_name, key=obj, local_path=str(local_path))
     else:
         for child_name in project_path.iterdir():
             if child_name.name not in ignore_paths:
