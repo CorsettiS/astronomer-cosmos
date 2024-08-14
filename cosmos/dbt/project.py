@@ -37,15 +37,34 @@ def has_non_empty_dependencies_file(project_path: Path) -> bool:
     return has_deps
 
 
-def create_symlinks(project_path: Path, tmp_dir: Path, ignore_dbt_packages: bool) -> None:
+def create_symlinks(project_path: Path, project_conn_id: str, tmp_dir: Path, ignore_dbt_packages: bool) -> None:
     """Helper function to create symlinks to the dbt project files."""
     ignore_paths = [DBT_LOG_DIR_NAME, DBT_TARGET_DIR_NAME, PACKAGE_LOCKFILE_YML, "profiles.yml"]
     if ignore_dbt_packages:
         # this is linked to dbt deps so if dbt deps is true then ignore existing dbt_packages folder
         ignore_paths.append("dbt_packages")
-    for child_name in os.listdir(project_path):
-        if child_name not in ignore_paths:
-            os.symlink(project_path / child_name, tmp_dir / child_name)
+    from airflow.providers.amazon.aws.hooks.s3 import S3Hook
+    if project_conn_id:
+        # Handle S3 path copying
+        s3_hook = S3Hook()
+        bucket_name, key_prefix = project_path.parts[0], '/'.join(project_path.parts[1:])
+
+        for obj in s3_hook.list_keys(bucket_name=bucket_name, prefix=key_prefix):
+            relative_path = Path(obj).relative_to(key_prefix)
+            local_path = tmp_dir / relative_path
+            logger.info(f"Downloading {obj} to {local_path}")
+            dir = local_path.parent
+            dir.mkdir(parents=True, exist_ok=True)
+            for child_name in os.listdir(dir):
+                logger.info(f"child_name: {child_name}")
+            # Download the file to the local path
+            s3_hook.download_file(bucket_name=bucket_name, key=obj, local_path=str(local_path))
+    else:
+        # Handle local symlinking
+        for child_name in os.listdir(project_path):
+            if child_name.name not in ignore_paths:
+                os.symlink(project_path / child_name, tmp_dir / child_name.name)
+
 
 
 def get_partial_parse_path(project_dir_path: Path) -> Path:
