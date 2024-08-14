@@ -53,14 +53,15 @@ def create_symlinks(project_path: Path, project_conn_id: str, tmp_dir: Path, ign
             relative_path = Path(obj).relative_to(key_prefix)
             local_path = tmp_dir / relative_path
             logger.info(f"Downloading {obj} to {local_path}")
-            local_path.parent.mkdir(parents=True, exist_ok=True)
-            logger.info("this shitty step works?")
-            logger.info(local_path.iterdir())
+            dir = local_path.parent
+            dir.mkdir(parents=True, exist_ok=True)
+            for child_name in os.listdir(dir):
+                logger.info(f"child_name: {child_name}")
             # Download the file to the local path
             s3_hook.download_file(bucket_name=bucket_name, key=obj, local_path=str(local_path))
     else:
         # Handle local symlinking
-        for child_name in project_path.iterdir():
+        for child_name in os.listdir(project_path):
             if child_name.name not in ignore_paths:
                 os.symlink(project_path / child_name, tmp_dir / child_name.name)
 
