@@ -124,14 +124,14 @@ class DbtLocalBaseOperator(AbstractDbtBaseOperator):
     }
 
     def __init__(
-        self,
-        profile_config: ProfileConfig,
-        invocation_mode: InvocationMode | None = None,
-        install_deps: bool = False,
-        callback: Callable[[str], None] | None = None,
-        should_store_compiled_sql: bool = True,
-        append_env: bool = True,
-        **kwargs: Any,
+            self,
+            profile_config: ProfileConfig,
+            invocation_mode: InvocationMode | None = None,
+            install_deps: bool = False,
+            callback: Callable[[str], None] | None = None,
+            should_store_compiled_sql: bool = True,
+            append_env: bool = True,
+            **kwargs: Any,
     ) -> None:
         self.profile_config = profile_config
         self.callback = callback
@@ -155,7 +155,7 @@ class DbtLocalBaseOperator(AbstractDbtBaseOperator):
         self.append_env = append_env
 
         # We should not spend time trying to install deps if the project doesn't have any dependencies
-        self.install_deps = install_deps and has_non_empty_dependencies_file(Path(self.project_dir))
+        self.install_deps = install_deps and has_non_empty_dependencies_file(self.project_dir)
 
     @cached_property
     def subprocess_hook(self) -> FullOutputSubprocessHook:
@@ -247,7 +247,7 @@ class DbtLocalBaseOperator(AbstractDbtBaseOperator):
                 RenderedTaskInstanceFields.dag_id == self.dag_id,
                 RenderedTaskInstanceFields.task_id == self.task_id,
                 RenderedTaskInstanceFields.run_id == ti.run_id,
-            ).delete()
+                ).delete()
             session.add(rtif)
         else:
             logger.info("Warning: ti is of type TaskInstancePydantic. Cannot update template_fields.")
@@ -308,17 +308,16 @@ class DbtLocalBaseOperator(AbstractDbtBaseOperator):
         return result
 
     def _cache_package_lockfile(self, tmp_project_dir: Path) -> None:
-        project_dir = Path(self.project_dir)
-        if is_cache_package_lockfile_enabled(project_dir):
-            latest_package_lockfile = _get_latest_cached_package_lockfile(project_dir)
+        if is_cache_package_lockfile_enabled(self.project_dir):
+            latest_package_lockfile = _get_latest_cached_package_lockfile(self.project_dir)
             if latest_package_lockfile:
                 _copy_cached_package_lockfile_to_project(latest_package_lockfile, tmp_project_dir)
 
     def run_command(
-        self,
-        cmd: list[str],
-        env: dict[str, str | bytes | os.PathLike[Any]],
-        context: Context,
+            self,
+            cmd: list[str],
+            env: dict[str, str | bytes | os.PathLike[Any]],
+            context: Context,
     ) -> FullOutputSubprocessResult | dbtRunnerResult:
         """
         Copies the dbt project to a temporary directory and runs the command.
@@ -333,9 +332,14 @@ class DbtLocalBaseOperator(AbstractDbtBaseOperator):
                 tmp_project_dir,
                 self.project_dir,
             )
+            print("step 1")
             tmp_dir_path = Path(tmp_project_dir)
+            print("step 2")
             env = {k: str(v) for k, v in env.items()}
-            create_symlinks(Path(self.project_dir), tmp_dir_path, self.install_deps)
+            print("step 3")
+
+            create_symlinks(self.project_dir, tmp_dir_path, self.install_deps)
+            print("step 4")
 
             if self.partial_parse and self.cache_dir is not None:
                 latest_partial_parse = cache._get_latest_partial_parse(Path(self.project_dir), self.cache_dir)
@@ -404,7 +408,7 @@ class DbtLocalBaseOperator(AbstractDbtBaseOperator):
                 return result
 
     def calculate_openlineage_events_completes(
-        self, env: dict[str, str | os.PathLike[Any] | bytes], project_dir: Path
+            self, env: dict[str, str | os.PathLike[Any] | bytes], project_dir: Path
     ) -> None:
         """
         Use openlineage-integration-common to extract lineage events from the artifacts generated after running the dbt
@@ -523,7 +527,7 @@ class DbtLocalBaseOperator(AbstractDbtBaseOperator):
         )
 
     def build_and_run_cmd(
-        self, context: Context, cmd_flags: list[str] | None = None
+            self, context: Context, cmd_flags: list[str] | None = None
     ) -> FullOutputSubprocessResult | dbtRunnerResult:
         dbt_cmd, env = self.build_cmd(context=context, cmd_flags=cmd_flags)
         dbt_cmd = dbt_cmd or []
@@ -588,9 +592,9 @@ class DbtTestLocalOperator(DbtTestMixin, DbtLocalBaseOperator):
     """
 
     def __init__(
-        self,
-        on_warning_callback: Callable[..., Any] | None = None,
-        **kwargs: Any,
+            self,
+            on_warning_callback: Callable[..., Any] | None = None,
+            **kwargs: Any,
     ) -> None:
         super().__init__(**kwargs)
         self.on_warning_callback = on_warning_callback
@@ -672,11 +676,11 @@ class DbtDocsCloudLocalOperator(DbtDocsLocalOperator, ABC):
     """
 
     def __init__(
-        self,
-        connection_id: str,
-        bucket_name: str,
-        folder_dir: str | None = None,
-        **kwargs: Any,
+            self,
+            connection_id: str,
+            bucket_name: str,
+            folder_dir: str | None = None,
+            **kwargs: Any,
     ) -> None:
         """Initializes the operator."""
         self.connection_id = connection_id
@@ -706,10 +710,10 @@ class DbtDocsS3LocalOperator(DbtDocsCloudLocalOperator):
     ui_color = "#FF9900"
 
     def __init__(
-        self,
-        *args: Any,
-        aws_conn_id: str | None = None,
-        **kwargs: Any,
+            self,
+            *args: Any,
+            aws_conn_id: str | None = None,
+            **kwargs: Any,
     ) -> None:
         if aws_conn_id:
             warnings.warn(
@@ -764,11 +768,11 @@ class DbtDocsAzureStorageLocalOperator(DbtDocsCloudLocalOperator):
     ui_color = "#007FFF"
 
     def __init__(
-        self,
-        *args: Any,
-        azure_conn_id: str | None = None,
-        container_name: str | None = None,
-        **kwargs: Any,
+            self,
+            *args: Any,
+            azure_conn_id: str | None = None,
+            container_name: str | None = None,
+            **kwargs: Any,
     ) -> None:
         if azure_conn_id:
             warnings.warn(
