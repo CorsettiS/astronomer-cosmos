@@ -338,8 +338,7 @@ class DbtLocalBaseOperator(AbstractDbtBaseOperator):
             print("step 2")
             env = {k: str(v) for k, v in env.items()}
             print("step 3")
-            if self.project_conn_id is None:
-                create_symlinks(self.project_dir, tmp_dir_path, self.install_deps)
+            create_symlinks(self.project_dir,self.project_conn_id, tmp_dir_path, self.install_deps)
             print("step 4")
 
             if self.partial_parse and self.cache_dir is not None and self.project_conn_id is None:
@@ -380,8 +379,7 @@ class DbtLocalBaseOperator(AbstractDbtBaseOperator):
                 result = self.invoke_dbt(
                     command=full_cmd,
                     env=env,
-                    # cwd=tmp_project_dir,
-                    cwd = self.project_dir
+                    cwd=tmp_project_dir,
                 )
                 if is_openlineage_available:
                     self.calculate_openlineage_events_completes(env, tmp_dir_path)
