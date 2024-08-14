@@ -45,7 +45,8 @@ def create_symlinks(project_path: Path, project_conn_id: str, tmp_dir: Path, ign
         ignore_paths.append("dbt_packages")
     if project_conn_id:
         # Handle S3 path copying
-        s3_hook = S3Hook(aws_conn_id=project_conn_id)
+        from airflow.providers.amazon.aws.hooks.s3 import S3Hook
+        s3_hook = S3Hook()
         bucket_name, key_prefix = project_path.parts[0], '/'.join(project_path.parts[1:])
 
         for obj in s3_hook.list_keys(bucket_name=bucket_name, prefix=key_prefix):
