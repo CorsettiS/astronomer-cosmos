@@ -135,6 +135,7 @@ def create_task_metadata(
     dbt_dag_task_group_identifier: str,
     use_task_group: bool = False,
     source_rendering_behavior: SourceRenderingBehavior = SourceRenderingBehavior.NONE,
+    enable_task_group: bool = False,
 ) -> TaskMetadata | None:
     """
     Create the metadata that will be used to instantiate the Airflow Task used to run the Dbt node.
@@ -164,7 +165,7 @@ def create_task_metadata(
         }
         if node.resource_type == DbtResourceType.MODEL:
             task_id = f"{node.name}_run"
-            if use_task_group is True:
+            if use_task_group is True and enable_task_group is True:
                 task_id = "run"
         elif node.resource_type == DbtResourceType.SOURCE:
             if (source_rendering_behavior == SourceRenderingBehavior.NONE) or (
