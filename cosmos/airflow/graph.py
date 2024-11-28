@@ -267,7 +267,8 @@ def generate_task_or_group(
                     on_warning_callback=on_warning_callback,
                 )
             test_task = create_airflow_task(test_meta, dag, task_group=task_group)
-            return task >> test_task
+            task.set_downstream(test_task)
+            return task
         else:
             task_or_group = create_airflow_task(task_meta, dag, task_group=task_group)
             return task_or_group
