@@ -255,10 +255,9 @@ def generate_task_or_group(
                 test_task = create_airflow_task(test_meta, dag, task_group=model_task_group)
                 task >> test_task
                 task_or_group = model_task_group
-        else:
-            task_or_group = create_airflow_task(task_meta, dag, task_group=task_group)
-            if use_task_group:
-                test_meta = create_test_task_metadata(
+        elif use_task_group and not enable_task_group:
+            task = create_airflow_task(task_meta, dag, task_group=task_group)
+            test_meta = create_test_task_metadata(
                     f"{node.name}_test",
                     execution_mode,
                     test_indirect_selection,
@@ -266,8 +265,10 @@ def generate_task_or_group(
                     node=node,
                     on_warning_callback=on_warning_callback,
                 )
-                test_task = create_airflow_task(test_meta, dag, task_group=task_group)
-                task_or_group >> test_task
+            test_task = create_airflow_task(test_meta, dag, task_group=task_group)
+            task_or_group = task >> test_task
+        else:
+            task_or_group = create_airflow_task(task_meta, dag, task_group=task_group)
 
     return task_or_group
 
