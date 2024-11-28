@@ -258,7 +258,6 @@ def generate_task_or_group(
             task_or_group = create_airflow_task(task_meta, dag, task_group=task_group)
     return task_or_group
 
-
 def _add_dbt_compile_task(
     nodes: dict[str, DbtNode],
     dag: DAG,
