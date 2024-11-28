@@ -35,6 +35,13 @@ def _snake_case_to_camelcase(value: str) -> str:
     """
     return "".join(x.capitalize() for x in value.lower().split("_"))
 
+def default_task_naming_function(node_name: str, resource_type: str, is_task_group: bool) -> str:
+    if resource_type == DbtResourceType.MODEL:
+        return f"{node_name}.run" if not is_task_group else ".run"
+    elif resource_type == DbtResourceType.SOURCE:
+        return f"{node_name}_source" if not is_task_group else resource_type.value
+    else:
+        return f"{node_name}_{resource_type.value}" if not is_task_group else resource_type.value
 
 def calculate_operator_class(
     execution_mode: ExecutionMode,
@@ -135,20 +142,8 @@ def create_task_metadata(
     dbt_dag_task_group_identifier: str,
     use_task_group: bool = False,
     source_rendering_behavior: SourceRenderingBehavior = SourceRenderingBehavior.NONE,
-    enable_task_group: bool = False,
+    task_naming_function: Callable[[str, str, bool], str] = default_task_naming_function,
 ) -> TaskMetadata | None:
-    """
-    Create the metadata that will be used to instantiate the Airflow Task used to run the Dbt node.
-
-    :param node: The dbt node which we desired to convert into an Airflow Task
-    :param execution_mode: Where Cosmos should run each dbt task (e.g. ExecutionMode.LOCAL, ExecutionMode.KUBERNETES).
-         Default is ExecutionMode.LOCAL.
-    :param args: Arguments to be used to instantiate an Airflow Task
-    :param dbt_dag_task_group_identifier: Identifier to refer to the DbtDAG or DbtTaskGroup in the DAG.
-    :param use_task_group: It determines whether to use the name as a prefix for the task id or not.
-        If it is False, then use the name as a prefix for the task id, otherwise do not.
-    :returns: The metadata necessary to instantiate the source dbt node as an Airflow task.
-    """
     dbt_resource_to_class = {
         DbtResourceType.MODEL: "DbtRun",
         DbtResourceType.SNAPSHOT: "DbtSnapshot",
@@ -163,31 +158,19 @@ def create_task_metadata(
             "dbt_node_config": node.context_dict,
             "dbt_dag_task_group_identifier": dbt_dag_task_group_identifier,
         }
-        if node.resource_type == DbtResourceType.MODEL:
-            task_id = f"{node.name}_run"
-            if use_task_group is True and enable_task_group is True:
-                task_id = "run"
-        elif node.resource_type == DbtResourceType.SOURCE:
+        task_id = task_naming_function(node.name, node.resource_type.value, use_task_group)
+
+        if node.resource_type == DbtResourceType.SOURCE:
             if (source_rendering_behavior == SourceRenderingBehavior.NONE) or (
                 source_rendering_behavior == SourceRenderingBehavior.WITH_TESTS_OR_FRESHNESS
                 and node.has_freshness is False
                 and node.has_test is False
             ):
                 return None
-            # TODO: https://github.com/astronomer/astronomer-cosmos
-            # pragma: no cover
-            task_id = f"{node.name}_source"
             args["select"] = f"source:{node.resource_name}"
             args.pop("models")
-            if use_task_group is True:
-                task_id = node.resource_type.value
             if node.has_freshness is False and source_rendering_behavior == SourceRenderingBehavior.ALL:
-                # render sources without freshness as empty operators
                 return TaskMetadata(id=task_id, operator_class="airflow.operators.empty.EmptyOperator")
-        else:
-            task_id = f"{node.name}_{node.resource_type.value}"
-            if use_task_group is True:
-                task_id = node.resource_type.value
 
         task_metadata = TaskMetadata(
             id=task_id,
@@ -218,7 +201,7 @@ def generate_task_or_group(
     source_rendering_behavior: SourceRenderingBehavior,
     test_indirect_selection: TestIndirectSelection,
     on_warning_callback: Callable[..., Any] | None,
-    enable_task_group: bool = False,
+    task_naming_function: Callable[[str, str, bool], str] = default_task_naming_function,
     **kwargs: Any,
 ) -> BaseOperator | TaskGroup | None:
     task_or_group: BaseOperator | TaskGroup | None = None
@@ -236,13 +219,11 @@ def generate_task_or_group(
         dbt_dag_task_group_identifier=_get_dbt_dag_task_group_identifier(dag, task_group),
         use_task_group=use_task_group,
         source_rendering_behavior=source_rendering_behavior,
+        task_naming_function=task_naming_function,
     )
 
-    # In most cases, we'll  map one DBT node to one Airflow task
-    # The exception are the test nodes, since it would be too slow to run test tasks individually.
-    # If test_behaviour=="after_each", each model task will be bundled with a test task, using TaskGroup
     if task_meta and node.resource_type != DbtResourceType.TEST:
-        if use_task_group and enable_task_group:
+        if use_task_group:
             with TaskGroup(dag=dag, group_id=node.name, parent_group=task_group) as model_task_group:
                 task = create_airflow_task(task_meta, dag, task_group=model_task_group)
                 test_meta = create_test_task_metadata(
@@ -255,25 +236,11 @@ def generate_task_or_group(
                 )
                 test_task = create_airflow_task(test_meta, dag, task_group=model_task_group)
                 task >> test_task
-                task_or_group=model_task_group
-
-        elif use_task_group and not enable_task_group:
-            task = create_airflow_task(task_meta, dag, task_group=task_group)
-            test_meta = create_test_task_metadata(
-                    f"{node.name}_test",
-                    execution_mode,
-                    test_indirect_selection,
-                    task_args=task_args,
-                    node=node,
-                    on_warning_callback=on_warning_callback,
-                )
-            test_task = create_airflow_task(test_meta, dag, task_group=task_group)
-            task.set_downstream(test_task)
-            return test_task
+                task_or_group = model_task_group
         else:
             task_or_group = create_airflow_task(task_meta, dag, task_group=task_group)
-
     return task_or_group
+
 
 def _add_dbt_compile_task(
     nodes: dict[str, DbtNode],
@@ -316,38 +283,16 @@ def _get_dbt_dag_task_group_identifier(dag: DAG, task_group: TaskGroup | None) -
 
 def build_airflow_graph(
     nodes: dict[str, DbtNode],
-    dag: DAG,  # Airflow-specific - parent DAG where to associate tasks and (optional) task groups
-    execution_mode: ExecutionMode,  # Cosmos-specific - decide what which class to use
-    task_args: dict[str, Any],  # Cosmos/DBT - used to instantiate tasks
-    test_indirect_selection: TestIndirectSelection,  # Cosmos/DBT - used to set test indirect selection mode
-    dbt_project_name: str,  # DBT / Cosmos - used to name test task if mode is after_all,
+    dag: DAG,
+    execution_mode: ExecutionMode,
+    task_args: dict[str, Any],
+    test_indirect_selection: TestIndirectSelection,
+    dbt_project_name: str,
     render_config: RenderConfig,
     task_group: TaskGroup | None = None,
-    on_warning_callback: Callable[..., Any] | None = None,  # argument specific to the DBT test command
+    on_warning_callback: Callable[..., Any] | None = None,
+    task_naming_function: Callable[[str, str, bool], str] = default_task_naming_function,
 ) -> None:
-    """
-    Instantiate dbt `nodes` as Airflow tasks within the given `task_group` (optional) or `dag` (mandatory).
-
-    The following arguments affect how each airflow task is instantiated:
-    * `execution_mode`
-    * `task_args`
-
-    The parameter `test_behavior` influences how many and where test nodes will be added, while the argument
-    `on_warning_callback` allows users to set a callback function to be called depending on the test result.
-    If the `test_behavior` is None, no test nodes are added. Otherwise, if the `test_behaviour` is `after_all`,
-    a single test task will be added after the Cosmos leave tasks, and it is named using `dbt_project_name`.
-    Finally, if the `test_behaviour` is `after_each`, a test will be added after each model.
-
-    :param nodes: Dictionary mapping dbt nodes (node.unique_id to node)
-    :param dag: Airflow DAG instance
-    :param execution_mode: Where Cosmos should run each dbt task (e.g. ExecutionMode.LOCAL, ExecutionMode.KUBERNETES).
-        Default is ExecutionMode.LOCAL.
-    :param task_args: Arguments to be used to instantiate an Airflow Task
-    :param dbt_project_name: Name of the dbt pipeline of interest
-    :param task_group: Airflow Task Group instance
-    :param on_warning_callback: A callback function called on warnings with additional Context variables “test_names”
-    and “test_results” of type List.
-    """
     node_converters = render_config.node_converters or {}
     test_behavior = render_config.test_behavior
     source_rendering_behavior = render_config.source_rendering_behavior
@@ -362,28 +307,23 @@ def build_airflow_graph(
                 "Its syntax and behavior can be changed before a major release."
             )
         logger.debug(f"Converting <{node.unique_id}> using <{conversion_function.__name__}>")
-
-
-        task_or_group = conversion_function(  # type: ignore
-                dag=dag,
-                task_group=task_group,
-                node=node,
-                execution_mode=execution_mode,
-                task_args=task_args,
-                test_behavior=test_behavior,
-                source_rendering_behavior=source_rendering_behavior,
-                test_indirect_selection=test_indirect_selection,
-                on_warning_callback=on_warning_callback,
-            )
-
-
+        task_or_group = conversion_function(
+            dag=dag,
+            task_group=task_group,
+            dbt_project_name=dbt_project_name,
+            execution_mode=execution_mode,
+            task_args=task_args,
+            test_behavior=test_behavior,
+            source_rendering_behavior=source_rendering_behavior,
+            test_indirect_selection=test_indirect_selection,
+            on_warning_callback=on_warning_callback,
+            task_naming_function=task_naming_function,
+            node=node,
+        )
         if task_or_group is not None:
             logger.debug(f"Conversion of <{node.unique_id}> was successful!")
             tasks_map[node_id] = task_or_group
 
-
-    # If test_behaviour=="after_all", there will be one test task, run by the end of the DAG
-    # The end of a DAG is defined by the DAG leaf tasks (tasks which do not have downstream tasks)
     if test_behavior == TestBehavior.AFTER_ALL:
         test_meta = create_test_task_metadata(
             f"{dbt_project_name}_test",
