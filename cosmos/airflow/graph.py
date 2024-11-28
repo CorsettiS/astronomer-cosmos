@@ -254,7 +254,9 @@ def generate_task_or_group(
                     on_warning_callback=on_warning_callback,
                 )
                 test_task = create_airflow_task(test_meta, dag, task_group=model_task_group)
-                return task,test_task
+                task >> test_task
+                task_or_group=model_task_group
+
         elif use_task_group and not enable_task_group:
             task = create_airflow_task(task_meta, dag, task_group=task_group)
             test_meta = create_test_task_metadata(
@@ -266,11 +268,11 @@ def generate_task_or_group(
                     on_warning_callback=on_warning_callback,
                 )
             test_task = create_airflow_task(test_meta, dag, task_group=task_group)
-            task.set_downstream(test_task)
-            return task
+            return task,test_task
         else:
             task_or_group = create_airflow_task(task_meta, dag, task_group=task_group)
-            return task_or_group
+
+    return task_or_group
 
 def _add_dbt_compile_task(
     nodes: dict[str, DbtNode],
@@ -374,7 +376,7 @@ def build_airflow_graph(
                 on_warning_callback=on_warning_callback,
                 node=node,
             )
-        else:
+        elif not enable_task_group:
             task_or_group,test = conversion_function(  # type: ignore
                 dag=dag,
                 task_group=task_group,
