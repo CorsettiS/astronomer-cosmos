@@ -254,9 +254,7 @@ def generate_task_or_group(
                     on_warning_callback=on_warning_callback,
                 )
                 test_task = create_airflow_task(test_meta, dag, task_group=model_task_group)
-                task >> test_task
-                task_or_group = model_task_group
-                return task_or_group
+                return task,test_task
         elif use_task_group and not enable_task_group:
             task = create_airflow_task(task_meta, dag, task_group=task_group)
             test_meta = create_test_task_metadata(
@@ -323,6 +321,7 @@ def build_airflow_graph(
     render_config: RenderConfig,
     task_group: TaskGroup | None = None,
     on_warning_callback: Callable[..., Any] | None = None,  # argument specific to the DBT test command
+    enable_task_group: bool = False,
 ) -> None:
     """
     Instantiate dbt `nodes` as Airflow tasks within the given `task_group` (optional) or `dag` (mandatory).
@@ -361,21 +360,39 @@ def build_airflow_graph(
                 "Its syntax and behavior can be changed before a major release."
             )
         logger.debug(f"Converting <{node.unique_id}> using <{conversion_function.__name__}>")
-        task_or_group = conversion_function(  # type: ignore
-            dag=dag,
-            task_group=task_group,
-            dbt_project_name=dbt_project_name,
-            execution_mode=execution_mode,
-            task_args=task_args,
-            test_behavior=test_behavior,
-            source_rendering_behavior=source_rendering_behavior,
-            test_indirect_selection=test_indirect_selection,
-            on_warning_callback=on_warning_callback,
-            node=node,
-        )
+
+        if enable_task_group:
+            task_or_group = conversion_function(  # type: ignore
+                dag=dag,
+                task_group=task_group,
+                dbt_project_name=dbt_project_name,
+                execution_mode=execution_mode,
+                task_args=task_args,
+                test_behavior=test_behavior,
+                source_rendering_behavior=source_rendering_behavior,
+                test_indirect_selection=test_indirect_selection,
+                on_warning_callback=on_warning_callback,
+                node=node,
+            )
+        else:
+            task_or_group,test = conversion_function(  # type: ignore
+                dag=dag,
+                task_group=task_group,
+                node=node,
+                execution_mode=execution_mode,
+                task_args=task_args,
+                test_behavior=test_behavior,
+                source_rendering_behavior=source_rendering_behavior,
+                test_indirect_selection=test_indirect_selection,
+                on_warning_callback=on_warning_callback,
+            )
+
         if task_or_group is not None:
             logger.debug(f"Conversion of <{node.unique_id}> was successful!")
-            tasks_map[node_id] = task_or_group
+            if enable_task_group:
+                tasks_map[node_id] = task_or_group
+            else:
+                tasks_map[node_id] = task_or_group >> test
 
     # If test_behaviour=="after_all", there will be one test task, run by the end of the DAG
     # The end of a DAG is defined by the DAG leaf tasks (tasks which do not have downstream tasks)
