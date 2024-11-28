@@ -217,6 +217,7 @@ def generate_task_or_group(
     source_rendering_behavior: SourceRenderingBehavior,
     test_indirect_selection: TestIndirectSelection,
     on_warning_callback: Callable[..., Any] | None,
+    enable_task_group: bool = False,
     **kwargs: Any,
 ) -> BaseOperator | TaskGroup | None:
     task_or_group: BaseOperator | TaskGroup | None = None
@@ -225,6 +226,7 @@ def generate_task_or_group(
         node.resource_type in TESTABLE_DBT_RESOURCES
         and test_behavior == TestBehavior.AFTER_EACH
         and node.has_test is True
+        and enable_task_group is True
     )
 
     task_meta = create_task_metadata(
