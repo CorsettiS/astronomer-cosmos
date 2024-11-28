@@ -268,11 +268,11 @@ def generate_task_or_group(
                     on_warning_callback=on_warning_callback,
                 )
             test_task = create_airflow_task(test_meta, dag, task_group=task_group)
-            return task,test_task
+            return (enable_task_group,task,test_task)
         else:
             task_or_group = create_airflow_task(task_meta, dag, task_group=task_group)
 
-    return task_or_group
+    return (enable_task_group,task_or_group)
 
 def _add_dbt_compile_task(
     nodes: dict[str, DbtNode],
@@ -323,7 +323,6 @@ def build_airflow_graph(
     render_config: RenderConfig,
     task_group: TaskGroup | None = None,
     on_warning_callback: Callable[..., Any] | None = None,  # argument specific to the DBT test command
-    enable_task_group: bool = False,
 ) -> None:
     """
     Instantiate dbt `nodes` as Airflow tasks within the given `task_group` (optional) or `dag` (mandatory).
@@ -363,8 +362,7 @@ def build_airflow_graph(
             )
         logger.debug(f"Converting <{node.unique_id}> using <{conversion_function.__name__}>")
 
-        if enable_task_group:
-            task_or_group = conversion_function(  # type: ignore
+        enable_task_group = conversion_function(  # type: ignore
                 dag=dag,
                 task_group=task_group,
                 dbt_project_name=dbt_project_name,
@@ -375,8 +373,22 @@ def build_airflow_graph(
                 test_indirect_selection=test_indirect_selection,
                 on_warning_callback=on_warning_callback,
                 node=node,
-            )
-        elif not enable_task_group:
+            )[0]
+
+        if enable_task_group:
+            task_or_group = conversion_function(  # type: ignore
+                dag=dag,
+                task_group=task_group,
+                node=node,
+                execution_mode=execution_mode,
+                task_args=task_args,
+                test_behavior=test_behavior,
+                source_rendering_behavior=source_rendering_behavior,
+                test_indirect_selection=test_indirect_selection,
+                on_warning_callback=on_warning_callback,
+                enable_task_group=enable_task_group,
+            )[1]
+        else:
             task_or_group,test = conversion_function(  # type: ignore
                 dag=dag,
                 task_group=task_group,
@@ -387,7 +399,9 @@ def build_airflow_graph(
                 source_rendering_behavior=source_rendering_behavior,
                 test_indirect_selection=test_indirect_selection,
                 on_warning_callback=on_warning_callback,
-            )
+                enable_task_group=enable_task_group,
+            )[1:]
+
 
         if task_or_group is not None:
             logger.debug(f"Conversion of <{node.unique_id}> was successful!")
