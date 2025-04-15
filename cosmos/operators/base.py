@@ -3,8 +3,8 @@ from __future__ import annotations
 import os
 from abc import ABCMeta, abstractmethod
 from pathlib import Path
-from typing import Any, Sequence, Tuple
-
+from typing import Any, Sequence, Tuple,Callable
+from cosmos.dbt.graph import DbtNode
 import yaml
 from airflow.models.baseoperator import BaseOperator
 from airflow.utils.context import Context, context_merge
@@ -13,6 +13,9 @@ from airflow.utils.strings import to_boolean
 
 from cosmos.dbt.executable import get_system_dbt
 
+def create_dbt_run_task_name(node: DbtNode, use_task_group: bool = False) -> str:
+    task_id = f"{node.name}_run"
+    return "run" if use_task_group else task_id
 
 class AbstractDbtBaseOperator(BaseOperator, metaclass=ABCMeta):
     """
@@ -110,8 +113,10 @@ class AbstractDbtBaseOperator(BaseOperator, metaclass=ABCMeta):
         dbt_cmd_global_flags: list[str] | None = None,
         cache_dir: Path | None = None,
         extra_context: dict[str, Any] | None = None,
+        create_dbt_run_task_name: Callable[[DbtNode, bool], str] = create_dbt_run_task_name,
         **kwargs: Any,
     ) -> None:
+        self.create_dbt_run_task_name = create_dbt_run_task_name
         self.project_dir = project_dir
         self.conn_id = conn_id
         self.select = select

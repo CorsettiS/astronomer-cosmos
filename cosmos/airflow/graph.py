@@ -127,6 +127,9 @@ def create_test_task_metadata(
         extra_context=extra_context,
     )
 
+def create_dbt_run_task_name(node: DbtNode, use_task_group: bool = False) -> str:
+    task_id = f"{node.name}_run"
+    return "run" if use_task_group else task_id
 
 def create_task_metadata(
     node: DbtNode,
@@ -135,6 +138,7 @@ def create_task_metadata(
     dbt_dag_task_group_identifier: str,
     use_task_group: bool = False,
     source_rendering_behavior: SourceRenderingBehavior = SourceRenderingBehavior.NONE,
+    create_dbt_run_task_name: Callable[[DbtNode, bool], str] = create_dbt_run_task_name,
 ) -> TaskMetadata | None:
     """
     Create the metadata that will be used to instantiate the Airflow Task used to run the Dbt node.
@@ -146,6 +150,7 @@ def create_task_metadata(
     :param dbt_dag_task_group_identifier: Identifier to refer to the DbtDAG or DbtTaskGroup in the DAG.
     :param use_task_group: It determines whether to use the name as a prefix for the task id or not.
         If it is False, then use the name as a prefix for the task id, otherwise do not.
+    :param create_dbt_run_task_name: Function to create the dbt run task name.
     :returns: The metadata necessary to instantiate the source dbt node as an Airflow task.
     """
     dbt_resource_to_class = {
@@ -162,10 +167,10 @@ def create_task_metadata(
             "dbt_node_config": node.context_dict,
             "dbt_dag_task_group_identifier": dbt_dag_task_group_identifier,
         }
+
         if node.resource_type == DbtResourceType.MODEL:
-            task_id = f"{node.name}_run"
-            if use_task_group is True:
-                task_id = "run"
+            task_id = create_dbt_run_task_name(node, use_task_group)
+
         elif node.resource_type == DbtResourceType.SOURCE:
             if (source_rendering_behavior == SourceRenderingBehavior.NONE) or (
                 source_rendering_behavior == SourceRenderingBehavior.WITH_TESTS_OR_FRESHNESS
@@ -173,8 +178,6 @@ def create_task_metadata(
                 and node.has_test is False
             ):
                 return None
-            # TODO: https://github.com/astronomer/astronomer-cosmos
-            # pragma: no cover
             task_id = f"{node.name}_source"
             args["select"] = f"source:{node.resource_name}"
             args.pop("models")
@@ -217,6 +220,7 @@ def generate_task_or_group(
     source_rendering_behavior: SourceRenderingBehavior,
     test_indirect_selection: TestIndirectSelection,
     on_warning_callback: Callable[..., Any] | None,
+    create_dbt_run_task_name: Callable[[DbtNode, bool], str] = create_dbt_run_task_name,
     **kwargs: Any,
 ) -> BaseOperator | TaskGroup | None:
     task_or_group: BaseOperator | TaskGroup | None = None
@@ -234,6 +238,7 @@ def generate_task_or_group(
         dbt_dag_task_group_identifier=_get_dbt_dag_task_group_identifier(dag, task_group),
         use_task_group=use_task_group,
         source_rendering_behavior=source_rendering_behavior,
+        create_dbt_run_task_name=create_dbt_run_task_name,
     )
 
     # In most cases, we'll  map one DBT node to one Airflow task
@@ -308,6 +313,7 @@ def build_airflow_graph(
     render_config: RenderConfig,
     task_group: TaskGroup | None = None,
     on_warning_callback: Callable[..., Any] | None = None,  # argument specific to the DBT test command
+    create_dbt_run_task_name: Callable[[DbtNode, bool], str] = create_dbt_run_task_name,
 ) -> None:
     """
     Instantiate dbt `nodes` as Airflow tasks within the given `task_group` (optional) or `dag` (mandatory).
@@ -331,6 +337,7 @@ def build_airflow_graph(
     :param task_group: Airflow Task Group instance
     :param on_warning_callback: A callback function called on warnings with additional Context variables “test_names”
     and “test_results” of type List.
+    :param create_dbt_run_task_name: Function to create the dbt run task name.
     """
     node_converters = render_config.node_converters or {}
     test_behavior = render_config.test_behavior
@@ -357,6 +364,7 @@ def build_airflow_graph(
             test_indirect_selection=test_indirect_selection,
             on_warning_callback=on_warning_callback,
             node=node,
+            create_dbt_run_task_name=create_dbt_run_task_name,
         )
         if task_or_group is not None:
             logger.debug(f"Conversion of <{node.unique_id}> was successful!")
