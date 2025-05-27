@@ -136,8 +136,8 @@ def create_test_task_metadata(
     :param test_task_name: Name of the Airflow task to be created
     :param execution_mode: The Cosmos execution mode we're aiming to run the dbt task at (e.g. local)
     :param task_args: Arguments to be used to instantiate an Airflow Task
-    :param on_warning_callback: A callback function called on warnings with additional Context variables “test_names”
-    and “test_results” of type List.
+    :param on_warning_callback: A callback function called on warnings with additional Context variables "test_names"
+    and "test_results" of type List.
     :param node: If the test relates to a specific node, the node reference
     :param detached_from_parent: Dictionary that maps node ids and their children tests that should be run detached
     :returns: The metadata necessary to instantiate the source dbt node as an Airflow task.
@@ -161,7 +161,9 @@ def create_test_task_metadata(
             task_args["select"] = node.resource_name
 
         extra_context = {"dbt_node_config": node.context_dict}
-        task_owner = node.owner
+        # Only set task_owner if enable_owner_inheritance is True (default) or render_config is not provided
+        if render_config is None or render_config.enable_owner_inheritance:
+            task_owner = node.owner
 
     elif render_config is not None:  # TestBehavior.AFTER_ALL
         task_args["select"] = render_config.select
@@ -176,16 +178,22 @@ def create_test_task_metadata(
     if node:
         args_to_override = node.operator_kwargs_to_override
 
-    return TaskMetadata(
-        id=test_task_name,
-        owner=task_owner,
-        operator_class=calculate_operator_class(
+    # Build TaskMetadata kwargs
+    task_metadata_kwargs = {
+        "id": test_task_name,
+        "operator_class": calculate_operator_class(
             execution_mode=execution_mode,
             dbt_class="DbtTest",
         ),
-        arguments={**task_args, **args_to_override},
-        extra_context=extra_context,
-    )
+        "arguments": {**task_args, **args_to_override},
+        "extra_context": extra_context,
+    }
+    
+    # Only set task_owner if enable_owner_inheritance is True (default) or render_config is not provided
+    if node is not None and (render_config is None or render_config.enable_owner_inheritance):
+        task_metadata_kwargs["owner"] = task_owner
+
+    return TaskMetadata(**task_metadata_kwargs)
 
 
 def _get_task_id_and_args(
@@ -250,6 +258,7 @@ def create_task_metadata(
     test_indirect_selection: TestIndirectSelection = TestIndirectSelection.EAGER,
     on_warning_callback: Callable[..., Any] | None = None,
     detached_from_parent: dict[str, DbtNode] | None = None,
+    render_config: RenderConfig | None = None,
 ) -> TaskMetadata | None:
     """
     Create the metadata that will be used to instantiate the Airflow Task used to run the Dbt node.
@@ -261,8 +270,8 @@ def create_task_metadata(
     :param dbt_dag_task_group_identifier: Identifier to refer to the DbtDAG or DbtTaskGroup in the DAG.
     :param use_task_group: It determines whether to use the name as a prefix for the task id or not.
         If it is False, then use the name as a prefix for the task id, otherwise do not.
-    :param on_warning_callback: A callback function called on warnings with additional Context variables “test_names”
-        and “test_results” of type List. This is param available for dbt test and dbt source freshness command.
+    :param on_warning_callback: A callback function called on warnings with additional Context variables "test_names"
+        and "test_results" of type List. This is param available for dbt test and dbt source freshness command.
     :param detached_from_parent: Dictionary that maps node ids and their children tests that should be run detached
     :returns: The metadata necessary to instantiate the source dbt node as an Airflow task.
     """
@@ -314,15 +323,21 @@ def create_task_metadata(
 
         _override_profile_if_needed(args, node.profile_config_to_override)
 
-        task_metadata = TaskMetadata(
-            id=task_id,
-            owner=node.owner,
-            operator_class=calculate_operator_class(
+        # Build TaskMetadata kwargs
+        task_metadata_kwargs = {
+            "id": task_id,
+            "operator_class": calculate_operator_class(
                 execution_mode=execution_mode, dbt_class=dbt_resource_to_class[node.resource_type]
             ),
-            arguments={**args, **node.operator_kwargs_to_override},
-            extra_context=extra_context,
-        )
+            "arguments": {**args, **node.operator_kwargs_to_override},
+            "extra_context": extra_context,
+        }
+        
+        # Only set owner if enable_owner_inheritance is True (default) or render_config is not provided
+        if render_config is None or render_config.enable_owner_inheritance:
+            task_metadata_kwargs["owner"] = node.owner
+
+        task_metadata = TaskMetadata(**task_metadata_kwargs)
         return task_metadata
     else:
         msg = (
@@ -356,6 +371,7 @@ def generate_task_or_group(
     on_warning_callback: Callable[..., Any] | None,
     normalize_task_id: Callable[..., Any] | None = None,
     detached_from_parent: dict[str, DbtNode] | None = None,
+    render_config: RenderConfig | None = None,
     **kwargs: Any,
 ) -> BaseOperator | TaskGroup | None:
     task_or_group: BaseOperator | TaskGroup | None = None
@@ -379,6 +395,7 @@ def generate_task_or_group(
         test_indirect_selection=test_indirect_selection,
         on_warning_callback=on_warning_callback,
         detached_from_parent=detached_from_parent,
+        render_config=render_config,
     )
 
     # In most cases, we'll  map one DBT node to one Airflow task
@@ -396,6 +413,7 @@ def generate_task_or_group(
                     node=node,
                     on_warning_callback=on_warning_callback,
                     detached_from_parent=detached_from_parent,
+                    render_config=render_config,
                 )
                 test_task = create_airflow_task(test_meta, dag, task_group=model_task_group)
                 task >> test_task
@@ -574,8 +592,8 @@ def build_airflow_graph(
     :param task_args: Arguments to be used to instantiate an Airflow Task
     :param dbt_project_name: Name of the dbt pipeline of interest
     :param task_group: Airflow Task Group instance
-    :param on_warning_callback: A callback function called on warnings with additional Context variables “test_names”
-    and “test_results” of type List.
+    :param on_warning_callback: A callback function called on warnings with additional Context variables "test_names"
+    and "test_results" of type List.
     :return: Dictionary mapping dbt nodes (node.unique_id to Airflow task)
     """
     node_converters = render_config.node_converters or {}
@@ -612,6 +630,7 @@ def build_airflow_graph(
             normalize_task_id=normalize_task_id,
             node=node,
             detached_from_parent=detached_from_parent,
+            render_config=render_config,
         )
         if task_or_group is not None:
             logger.debug(f"Conversion of <{node.unique_id}> was successful!")
