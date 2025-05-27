@@ -316,7 +316,6 @@ def create_task_metadata(
 
         _override_profile_if_needed(args, node.profile_config_to_override)
 
-        # Determine task owner based on enable_owner_inheritance setting
         task_owner = ""
         if render_config is None or render_config.enable_owner_inheritance:
             task_owner = node.owner
