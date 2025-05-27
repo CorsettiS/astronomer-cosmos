@@ -161,7 +161,8 @@ def create_test_task_metadata(
             task_args["select"] = node.resource_name
 
         extra_context = {"dbt_node_config": node.context_dict}
-        task_owner = node.owner
+        if render_config is None or render_config.enable_owner_inheritance:
+            task_owner = node.owner
 
     elif render_config is not None:  # TestBehavior.AFTER_ALL
         task_args["select"] = render_config.select
@@ -250,6 +251,7 @@ def create_task_metadata(
     test_indirect_selection: TestIndirectSelection = TestIndirectSelection.EAGER,
     on_warning_callback: Callable[..., Any] | None = None,
     detached_from_parent: dict[str, DbtNode] | None = None,
+    render_config: RenderConfig | None = None,
 ) -> TaskMetadata | None:
     """
     Create the metadata that will be used to instantiate the Airflow Task used to run the Dbt node.
@@ -314,9 +316,14 @@ def create_task_metadata(
 
         _override_profile_if_needed(args, node.profile_config_to_override)
 
+        # Determine task owner based on enable_owner_inheritance setting
+        task_owner = ""
+        if render_config is None or render_config.enable_owner_inheritance:
+            task_owner = node.owner
+
         task_metadata = TaskMetadata(
             id=task_id,
-            owner=node.owner,
+            owner=task_owner,
             operator_class=calculate_operator_class(
                 execution_mode=execution_mode, dbt_class=dbt_resource_to_class[node.resource_type]
             ),
@@ -356,6 +363,7 @@ def generate_task_or_group(
     on_warning_callback: Callable[..., Any] | None,
     normalize_task_id: Callable[..., Any] | None = None,
     detached_from_parent: dict[str, DbtNode] | None = None,
+    render_config: RenderConfig | None = None,
     **kwargs: Any,
 ) -> BaseOperator | TaskGroup | None:
     task_or_group: BaseOperator | TaskGroup | None = None
@@ -379,6 +387,7 @@ def generate_task_or_group(
         test_indirect_selection=test_indirect_selection,
         on_warning_callback=on_warning_callback,
         detached_from_parent=detached_from_parent,
+        render_config=render_config,
     )
 
     # In most cases, we'll  map one DBT node to one Airflow task
@@ -396,6 +405,7 @@ def generate_task_or_group(
                     node=node,
                     on_warning_callback=on_warning_callback,
                     detached_from_parent=detached_from_parent,
+                    render_config=render_config,
                 )
                 test_task = create_airflow_task(test_meta, dag, task_group=model_task_group)
                 task >> test_task
@@ -612,6 +622,7 @@ def build_airflow_graph(
             normalize_task_id=normalize_task_id,
             node=node,
             detached_from_parent=detached_from_parent,
+            render_config=render_config,
         )
         if task_or_group is not None:
             logger.debug(f"Conversion of <{node.unique_id}> was successful!")
