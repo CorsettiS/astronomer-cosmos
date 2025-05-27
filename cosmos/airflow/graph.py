@@ -161,7 +161,10 @@ def create_test_task_metadata(
             task_args["select"] = node.resource_name
 
         extra_context = {"dbt_node_config": node.context_dict}
-        task_owner = node.owner if not (render_config and render_config.disable_node_owner) else ""
+        logger.info("render config: %s", render_config.disable_node_owner)
+        from time import sleep
+        sleep(100)
+        task_owner = node.owner if not render_config.disable_node_owner else ""
 
     elif render_config is not None:  # TestBehavior.AFTER_ALL
         task_args["select"] = render_config.select
@@ -315,9 +318,13 @@ def create_task_metadata(
 
         _override_profile_if_needed(args, node.profile_config_to_override)
 
+        logger.info("render config: %s", render_config.disable_node_owner)
+        from time import sleep
+        sleep(100)
+
         task_metadata = TaskMetadata(
             id=task_id,
-            owner=node.owner if not (render_config and render_config.disable_node_owner) else "",
+            owner=node.owner if not render_config.disable_node_owner else "",
             operator_class=calculate_operator_class(
                 execution_mode=execution_mode, dbt_class=dbt_resource_to_class[node.resource_type]
             ),
