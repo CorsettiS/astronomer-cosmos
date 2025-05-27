@@ -986,6 +986,60 @@ def test_owner(dbt_extra_config, expected_owner):
     assert output.leaves[0].owner == expected_owner
 
 
+@pytest.mark.parametrize(
+    "enable_owner_inheritance,dbt_owner,expected_owner",
+    [
+        (True, "dbt-owner", "dbt-owner"),  # Default behavior - owner is inherited
+        (False, "dbt-owner", ""),  # Owner inheritance disabled - owner field is empty
+        (None, "dbt-owner", "dbt-owner"),  # None should behave like True (default)
+    ],
+)
+def test_enable_owner_inheritance(enable_owner_inheritance, dbt_owner, expected_owner):
+    """Test that enable_owner_inheritance flag controls whether owner is inherited from dbt nodes.
+    
+    When enable_owner_inheritance=False, the TaskMetadata's owner field will be empty string,
+    which means the Airflow task will be created without an explicit owner, allowing Airflow
+    to use its default owner (DEFAULT_OWNER).
+    """
+    with DAG("test-owner-inheritance", start_date=datetime(2022, 1, 1)) as dag:
+        node = DbtNode(
+            unique_id=f"{DbtResourceType.MODEL.value}.my_folder.my_model",
+            resource_type=DbtResourceType.MODEL,
+            file_path=SAMPLE_PROJ_PATH / "gen2/models/parent.sql",
+            tags=[],
+            config={"materialized": "view", "meta": {"owner": dbt_owner}},
+            depends_on=[],
+        )
+
+        # Create render_config with the specified enable_owner_inheritance value
+        render_config = RenderConfig(
+            enable_owner_inheritance=enable_owner_inheritance
+        ) if enable_owner_inheritance is not None else None
+
+        # Test with create_task_metadata
+        metadata = create_task_metadata(
+            node=node,
+            execution_mode=ExecutionMode.LOCAL,
+            args={},
+            dbt_dag_task_group_identifier="",
+            render_config=render_config,
+        )
+        
+        assert metadata.owner == expected_owner
+
+        # Test with create_test_task_metadata
+        test_metadata = create_test_task_metadata(
+            test_task_name="test_task",
+            execution_mode=ExecutionMode.LOCAL,
+            test_indirect_selection=TestIndirectSelection.EAGER,
+            task_args={},
+            node=node,
+            render_config=render_config,
+        )
+        
+        assert test_metadata.owner == expected_owner
+
+
 def test_custom_meta():
     with DAG("test-id", start_date=datetime(2022, 1, 1)) as dag:
         task_args = {
